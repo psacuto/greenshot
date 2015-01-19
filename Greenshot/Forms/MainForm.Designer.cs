@@ -103,9 +103,9 @@ namespace Greenshot {
 									this.toolStripCloseSeparator,
 									this.contextmenu_exit});
 			this.contextMenu.Name = "contextMenu";
-			this.contextMenu.Size = new System.Drawing.Size(171, 392);
 			this.contextMenu.Closing += new System.Windows.Forms.ToolStripDropDownClosingEventHandler(this.ContextMenuClosing);
 			this.contextMenu.Opening += new System.ComponentModel.CancelEventHandler(this.ContextMenuOpening);
+			this.contextMenu.Renderer = new Greenshot.Controls.ContextMenuToolStripProfessionalRenderer();
 			// 
 			// contextmenu_capturearea
 			// 
@@ -141,7 +141,6 @@ namespace Greenshot {
 			// 
 			// contextmenu_captureie
 			// 
-			this.contextmenu_captureie.Image = ((System.Drawing.Image)(resources.GetObject("contextmenu_captureie.Image")));
 			this.contextmenu_captureie.Name = "contextmenu_captureie";
 			this.contextmenu_captureie.ShortcutKeyDisplayString = "Ctrl + Shift + Print";
 			this.contextmenu_captureie.Size = new System.Drawing.Size(170, 22);
@@ -204,7 +203,7 @@ namespace Greenshot {
 			// contextmenu_quicksettings
 			// 
 			this.contextmenu_quicksettings.Name = "contextmenu_quicksettings";
-			this.contextmenu_quicksettings.Size = new System.Drawing.Size(170, 22);
+			this.contextmenu_quicksettings.Size = new System.Drawing.Size(170, coreConfiguration.IconSize.Height + 8);
 			// 
 			// contextmenu_settings
 			// 

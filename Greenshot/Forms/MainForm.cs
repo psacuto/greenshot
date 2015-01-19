@@ -18,6 +18,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -252,7 +253,17 @@ namespace Greenshot {
 								instanceInfo.Append(index + ": ").AppendLine(Kernel32.GetProcessPath(currentProcess.Id));
 							}
 						}
-						MessageBox.Show(Language.GetString(LangKey.error_multipleinstances) + "\r\n" + instanceInfo, Language.GetString(LangKey.error));
+
+						// A dirty fix to make sure the messagebox is visible as a Greenshot window on the taskbar
+						using (Form dummyForm = new Form()) {
+							dummyForm.Icon = GreenshotResources.getGreenshotIcon();
+							dummyForm.ShowInTaskbar = true;
+							dummyForm.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
+							dummyForm.Location = new Point(int.MinValue, int.MinValue);
+							dummyForm.Load += delegate { dummyForm.Size = Size.Empty; };
+							dummyForm.Show();
+							MessageBox.Show(dummyForm, Language.GetString(LangKey.error_multipleinstances) + "\r\n" + instanceInfo, Language.GetString(LangKey.error), MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+						}
 					}
 					FreeMutex();
 					Application.Exit();
@@ -336,7 +347,7 @@ namespace Greenshot {
 
 		public MainForm(CopyDataTransport dataTransport) {
 			_instance = this;
-			
+
 			//
 			// The InitializeComponent() call is required for Windows Forms designer support.
 			//
@@ -387,6 +398,9 @@ namespace Greenshot {
 				InitializeQuickSettingsMenu();
 			}
 			SoundHelper.Initialize();
+
+			coreConfiguration.PropertyChanged += OnIconSizeChanged;
+			OnIconSizeChanged(this, new PropertyChangedEventArgs("IconSize"));
 
 			// Set the Greenshot icon visibility depending on the configuration. (Added for feature #3521446)
 			// Setting it to true this late prevents Problems with the context menu
@@ -550,6 +564,21 @@ namespace Greenshot {
 		}
 
 		/// <summary>
+		/// Fix icon reference
+		/// </summary>
+		/// <param name="sender"></param>
+		/// <param name="e"></param>
+		private void OnIconSizeChanged(object sender, PropertyChangedEventArgs e) {
+			if (e.PropertyName == "IconSize") {
+				contextMenu.ImageScalingSize = coreConfiguration.IconSize;
+				string ieExePath = PluginUtils.GetExePath("iexplore.exe");
+				if (!string.IsNullOrEmpty(ieExePath)) {
+					this.contextmenu_captureie.Image = PluginUtils.GetCachedExeIcon(ieExePath, 0);
+				}
+			}
+		}
+
+		/// <summary>
 		/// Registers all hotkeys as configured, displaying a dialog in case of hotkey conflicts with other tools.
 		/// </summary>
 		/// <returns>Whether the hotkeys could be registered to the users content. This also applies if conflicts arise and the user decides to ignore these (i.e. not to register the conflicting hotkey).</returns>
@@ -692,7 +721,7 @@ namespace Greenshot {
 		#region contextmenu
 		void ContextMenuOpening(object sender, CancelEventArgs e)	{
 			contextmenu_captureclipboard.Enabled = ClipboardHelper.ContainsImage();
-			contextmenu_capturelastregion.Enabled = RuntimeConfig.LastCapturedRegion != Rectangle.Empty;
+			contextmenu_capturelastregion.Enabled = coreConfiguration.LastCapturedRegion != Rectangle.Empty;
 
 			// IE context menu code
 			try {
@@ -716,6 +745,13 @@ namespace Greenshot {
 				contextmenu_capturefullscreen.DropDownClosed += MultiScreenDropDownClosing;
 			} else {
 				contextmenu_capturefullscreen.Click += CaptureFullScreenToolStripMenuItemClick;
+			}
+
+			var now = DateTime.Now;
+			if ((now.Month == 12 && now.Day > 19 && now.Day < 27) || // christmas
+			    (now.Month ==  3 && now.Day > 13 && now.Day < 21)) { // birthday
+				var resources = new ComponentResourceManager(typeof(MainForm));
+					contextmenu_donate.Image = (Image)resources.GetObject("contextmenu_present.Image");
 			}
 		}
 		
@@ -1249,13 +1285,18 @@ namespace Greenshot {
 			switch (clickAction) {
 				case ClickActions.OPEN_LAST_IN_EXPLORER:
 					string path = null;
-					string configPath = FilenameHelper.FillVariables(_conf.OutputFilePath, false);
-					string lastFilePath = Path.GetDirectoryName(_conf.OutputFileAsFullpath);
-					if (lastFilePath != null && Directory.Exists(lastFilePath)) {
-						path = lastFilePath;
-					} else if (Directory.Exists(configPath)) {
-						path = configPath;
-					}
+                    if (!string.IsNullOrEmpty(_conf.OutputFileAsFullpath)) {
+                        string lastFilePath = Path.GetDirectoryName(_conf.OutputFileAsFullpath);
+                        if (!string.IsNullOrEmpty(lastFilePath) && Directory.Exists(lastFilePath)) {
+                            path = lastFilePath;
+					    }
+                    }
+                    if (path == null) {
+                        string configPath = FilenameHelper.FillVariables(_conf.OutputFilePath, false);
+                        if (Directory.Exists(configPath)) {
+                            path = configPath;
+                        }
+                    }
 
 					if (path != null) {
 						try {

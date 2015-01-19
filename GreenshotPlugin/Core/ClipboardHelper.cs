@@ -18,6 +18,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -44,11 +45,13 @@ namespace GreenshotPlugin.Core {
 		private static readonly string FORMAT_FILECONTENTS = "FileContents";
 		private static readonly string FORMAT_PNG = "PNG";
 		private static readonly string FORMAT_PNG_OFFICEART = "PNG+Office Art";
+		private static readonly string FORMAT_17 = "Format17";
 		private static readonly string FORMAT_JPG = "JPG";
 		private static readonly string FORMAT_JFIF = "JFIF";
 		private static readonly string FORMAT_JFIF_OFFICEART = "JFIF+Office Art";
 		private static readonly string FORMAT_GIF = "GIF";
-		private static readonly string FORMAT_BITMAP_PLACEHOLDER = "_BITMAP_";
+		private static readonly string FORMAT_BITMAP = "System.Drawing.Bitmap";
+		//private static readonly string FORMAT_HTML = "HTML Format";
 		
 		private static IntPtr nextClipboardViewer = IntPtr.Zero;
 		// Template for the HTML Text on the clipboard
@@ -130,7 +133,7 @@ EndSelection:<<<<<<<4
 		/// <param name="copy"></param>
 		private static void SetDataObject(IDataObject ido, bool copy) {
 			lock (clipboardLockObject) {
-				int retryCount = 2;
+				int retryCount = 5;
 				while (retryCount >= 0) {
 					try {
 						Clipboard.SetDataObject(ido, copy);
@@ -229,6 +232,7 @@ EndSelection:<<<<<<<4
 					|| dataObject.GetDataPresent(DataFormats.Tiff)
 					|| dataObject.GetDataPresent(DataFormats.EnhancedMetafile)
 					|| dataObject.GetDataPresent(FORMAT_PNG)
+					|| dataObject.GetDataPresent(FORMAT_17)
 					|| dataObject.GetDataPresent(FORMAT_JPG)
 					|| dataObject.GetDataPresent(FORMAT_GIF)) {
 					return true;
@@ -323,28 +327,14 @@ EndSelection:<<<<<<<4
 				if (formats != null && formats.Contains(FORMAT_PNG_OFFICEART) && formats.Contains(DataFormats.Dib)) {
 					// Outlook ??
 					LOG.Info("Most likely the current clipboard contents come from Outlook, as this has a problem with PNG and others we place the DIB format to the front...");
-					retrieveFormats = new string[] { DataFormats.Dib, FORMAT_BITMAP_PLACEHOLDER, FORMAT_FILECONTENTS, FORMAT_PNG_OFFICEART, FORMAT_PNG, FORMAT_JFIF_OFFICEART, FORMAT_JPG, FORMAT_JFIF, DataFormats.Tiff, FORMAT_GIF };
+					retrieveFormats = new string[] { DataFormats.Dib, FORMAT_BITMAP, FORMAT_FILECONTENTS, FORMAT_PNG_OFFICEART, FORMAT_PNG, FORMAT_JFIF_OFFICEART, FORMAT_JPG, FORMAT_JFIF, DataFormats.Tiff, FORMAT_GIF };
 				} else {
-					retrieveFormats = new string[] { FORMAT_PNG_OFFICEART, FORMAT_PNG, FORMAT_JFIF_OFFICEART, FORMAT_JPG, FORMAT_JFIF, DataFormats.Tiff, DataFormats.Dib, FORMAT_BITMAP_PLACEHOLDER, FORMAT_FILECONTENTS, FORMAT_GIF };
+					retrieveFormats = new string[] { FORMAT_PNG_OFFICEART, FORMAT_PNG, FORMAT_17, FORMAT_JFIF_OFFICEART, FORMAT_JPG, FORMAT_JFIF, DataFormats.Tiff, DataFormats.Dib, FORMAT_BITMAP, FORMAT_FILECONTENTS, FORMAT_GIF };
 				}
 				foreach (string currentFormat in retrieveFormats) {
-					if (FORMAT_BITMAP_PLACEHOLDER.Equals(currentFormat)) {
-						LOG.Info("Using default .NET Clipboard.GetImage()");
-						try {
-							returnImage = Clipboard.GetImage();
-							if (returnImage == null) {
-								LOG.Info("Clipboard.GetImage() didn't return an image.");
-							}
-						} catch (Exception ex) {
-							LOG.Error("Problem retrieving Image via Clipboard.GetImage(): ", ex);
-						}
-					} else if (formats.Contains(currentFormat)) {
+					if (formats.Contains(currentFormat)) {
 						LOG.InfoFormat("Found {0}, trying to retrieve.", currentFormat);
-						if (currentFormat == DataFormats.Dib) {
-							returnImage = GetDIBImage(dataObject);
-						} else {
-							returnImage = GetImageFormat(currentFormat, dataObject);
-						}
+						returnImage = GetImageForFormat(currentFormat, dataObject);
 					} else {
 						LOG.DebugFormat("Couldn't find format {0}.", currentFormat);
 					}
@@ -358,70 +348,83 @@ EndSelection:<<<<<<<4
 		}
 		
 		/// <summary>
+		/// Helper method to try to get an image in the specified format from the dataObject
 		/// the DIB readed should solve the issue reported here: https://sourceforge.net/projects/greenshot/forums/forum/676083/topic/6354353/index/page/1
+		/// It also supports Format17/DibV5, by using the following information: http://stackoverflow.com/a/14335591
 		/// </summary>
-		/// <returns>Image</returns>
-		private static Image GetDIBImage(IDataObject dataObejct) {
-			try {
-				// If the EnableSpecialDIBClipboardReader flag in the config is set, use the code from:
-				// http://www.thomaslevesque.com/2009/02/05/wpf-paste-an-image-from-the-clipboard/
-				// to read the DeviceIndependentBitmap from the clipboard, this might fix bug 3576125
+		/// <param name="format">string with the format</param>
+		/// <param name="dataObject">IDataObject</param>
+		/// <returns>Image or null</returns>
+		private static Image GetImageForFormat(string format, IDataObject dataObject) {
+			object clipboardObject = GetFromDataObject(dataObject, format);
+			MemoryStream imageStream = clipboardObject as MemoryStream;
+			if (!isValidStream(imageStream)) {
+				// TODO: add "HTML Format" support here...
+				return clipboardObject as Image;
+			} else {
 				if (config.EnableSpecialDIBClipboardReader) {
-					MemoryStream dibStream = GetFromDataObject(dataObejct, DataFormats.Dib) as MemoryStream;
-					if (isValidStream(dibStream)) {
-						LOG.Info("Found valid DIB stream, trying to process it.");
-						byte[] dibBuffer = new byte[dibStream.Length];
-						dibStream.Read(dibBuffer, 0, dibBuffer.Length);
-						BitmapInfoHeader infoHeader = BinaryStructHelper.FromByteArray<BitmapInfoHeader>(dibBuffer);
-						LOG.InfoFormat("Using special DIB format reader for biCompression {0}", infoHeader.biCompression);
-						int fileHeaderSize = Marshal.SizeOf(typeof(BitmapFileHeader));
-						uint infoHeaderSize = infoHeader.biSize;
-						int fileSize = (int)(fileHeaderSize + infoHeader.biSize + infoHeader.biSizeImage);
+					if (format == FORMAT_17 || format == DataFormats.Dib) {
+						LOG.Info("Found DIB stream, trying to process it.");
+						try {
+							byte[] dibBuffer = new byte[imageStream.Length];
+							imageStream.Read(dibBuffer, 0, dibBuffer.Length);
+							BITMAPINFOHEADER infoHeader = BinaryStructHelper.FromByteArray<BITMAPINFOHEADER>(dibBuffer);
+							if (!infoHeader.IsDibV5) {
+								LOG.InfoFormat("Using special DIB <v5 format reader with biCompression {0}", infoHeader.biCompression);
+								int fileHeaderSize = Marshal.SizeOf(typeof(BITMAPFILEHEADER));
+								uint infoHeaderSize = infoHeader.biSize;
+								int fileSize = (int)(fileHeaderSize + infoHeader.biSize + infoHeader.biSizeImage);
 
-						BitmapFileHeader fileHeader = new BitmapFileHeader();
-						fileHeader.bfType = BitmapFileHeader.BM;
-						fileHeader.bfSize = fileSize;
-						fileHeader.bfReserved1 = 0;
-						fileHeader.bfReserved2 = 0;
-						fileHeader.bfOffBits = (int)(fileHeaderSize + infoHeaderSize + infoHeader.biClrUsed * 4);
+								BITMAPFILEHEADER fileHeader = new BITMAPFILEHEADER();
+								fileHeader.bfType = BITMAPFILEHEADER.BM;
+								fileHeader.bfSize = fileSize;
+								fileHeader.bfReserved1 = 0;
+								fileHeader.bfReserved2 = 0;
+								fileHeader.bfOffBits = (int)(fileHeaderSize + infoHeaderSize + infoHeader.biClrUsed * 4);
 
-						byte[] fileHeaderBytes = BinaryStructHelper.ToByteArray<BitmapFileHeader>(fileHeader);
+								byte[] fileHeaderBytes = BinaryStructHelper.ToByteArray<BITMAPFILEHEADER>(fileHeader);
 
-						using (MemoryStream bitmapStream = new MemoryStream()) {
-							bitmapStream.Write(fileHeaderBytes, 0, fileHeaderSize);
-							bitmapStream.Write(dibBuffer, 0, dibBuffer.Length);
-							bitmapStream.Seek(0, SeekOrigin.Begin);
-							using (Image tmpImage = Image.FromStream(bitmapStream)) {
-								if (tmpImage != null) {
-									return ImageHelper.Clone(tmpImage);										
+								using (MemoryStream bitmapStream = new MemoryStream()) {
+									bitmapStream.Write(fileHeaderBytes, 0, fileHeaderSize);
+									bitmapStream.Write(dibBuffer, 0, dibBuffer.Length);
+									bitmapStream.Seek(0, SeekOrigin.Begin);
+									using (Image tmpImage = Image.FromStream(bitmapStream)) {
+										if (tmpImage != null) {
+											return ImageHelper.Clone(tmpImage);
+										}
+									}
+								}
+							} else {
+								LOG.Info("Using special DIBV5 / Format17 format reader");
+								// CF_DIBV5
+								IntPtr gcHandle = IntPtr.Zero;
+								try {
+									GCHandle handle = GCHandle.Alloc(dibBuffer, GCHandleType.Pinned);
+									gcHandle = GCHandle.ToIntPtr(handle);
+									return new Bitmap(infoHeader.biWidth, infoHeader.biHeight, -(int)(infoHeader.biSizeImage / infoHeader.biHeight),
+										infoHeader.biBitCount == 32?PixelFormat.Format32bppArgb: PixelFormat.Format24bppRgb,
+										new IntPtr(handle.AddrOfPinnedObject().ToInt32() + infoHeader.OffsetToPixels + (infoHeader.biHeight - 1) * (int)(infoHeader.biSizeImage / infoHeader.biHeight)));
+								} catch (Exception ex) {
+									LOG.Error("Problem retrieving Format17 from clipboard.", ex);
+								} finally {
+									if (gcHandle == IntPtr.Zero) {
+										GCHandle.FromIntPtr(gcHandle).Free();
+									}
 								}
 							}
+						} catch (Exception dibEx) {
+							LOG.Error("Problem retrieving DIB from clipboard.", dibEx);
 						}
 					}
 				} else {
 					LOG.Info("Skipping special DIB format reader as it's disabled in the configuration.");
 				}
-			} catch (Exception dibEx) {
-				LOG.Error("Problem retrieving DIB from clipboard.", dibEx);
-			}
-			return null;
-		}
-		
-		/// <summary>
-		/// Helper method to try to get an image in the specified format from the dataObject
-		/// </summary>
-		/// <param name="format">string with the format</param>
-		/// <param name="dataObject">IDataObject</param>
-		/// <returns>Image or null</returns>
-		private static Image GetImageFormat(string format, IDataObject dataObject) {
-			MemoryStream imageStream = GetFromDataObject(dataObject, format) as MemoryStream;
-			if (isValidStream(imageStream)) {
 				try {
 					imageStream.Seek(0, SeekOrigin.Begin);
 					using (Image tmpImage = Image.FromStream(imageStream, true, true)) {
 						if (tmpImage != null) {
 							LOG.InfoFormat("Got image with clipboard format {0} from the clipboard.", format);
-							return ImageHelper.Clone(tmpImage);										
+							return ImageHelper.Clone(tmpImage);
 						}
 					}
 				} catch (Exception streamImageEx) {
@@ -506,6 +509,7 @@ EndSelection:<<<<<<<4
 			//ido.SetData(DataFormats.Bitmap, true, image);
 
 			MemoryStream dibStream = null;
+			MemoryStream dibV5Stream = null;
 			MemoryStream pngStream = null;
 			Image imageToSave = null;
 			bool disposeImage = false;
@@ -542,6 +546,43 @@ EndSelection:<<<<<<<4
 
 						// Set the DIB to the clipboard DataObject
 						dataObject.SetData(DataFormats.Dib, true, dibStream);
+					}
+				} catch (Exception dibEx) {
+					LOG.Error("Error creating DIB for the Clipboard.", dibEx);
+				}
+
+				// CF_DibV5
+				try {
+					if (config.ClipboardFormats.Contains(ClipboardFormat.DIBV5)) {
+						// Create the stream for the clipboard
+						dibV5Stream = new MemoryStream();
+
+						// Create the BITMAPINFOHEADER
+						BITMAPINFOHEADER header = new BITMAPINFOHEADER(imageToSave.Width, imageToSave.Height, 32);
+						// Make sure we have BI_BITFIELDS, this seems to be normal for Format17?
+						header.biCompression = BI_COMPRESSION.BI_BITFIELDS;
+						// Create a byte[] to write
+						byte[] headerBytes = BinaryStructHelper.ToByteArray<BITMAPINFOHEADER>(header);
+						// Write the BITMAPINFOHEADER to the stream
+						dibV5Stream.Write(headerBytes, 0, headerBytes.Length);
+
+						// As we have specified BI_COMPRESSION.BI_BITFIELDS, the BitfieldColorMask needs to be added
+						BitfieldColorMask colorMask = new BitfieldColorMask();
+						// Make sure the values are set
+						colorMask.InitValues();
+						// Create the byte[] from the struct
+						byte[] colorMaskBytes = BinaryStructHelper.ToByteArray<BitfieldColorMask>(colorMask);
+						Array.Reverse(colorMaskBytes);
+						// Write to the stream
+						dibV5Stream.Write(colorMaskBytes, 0, colorMaskBytes.Length);
+
+						// Create the raw bytes for the pixels only
+						byte[] bitmapBytes = BitmapToByteArray((Bitmap)imageToSave);
+						// Write to the stream
+						dibV5Stream.Write(bitmapBytes, 0, bitmapBytes.Length);
+
+						// Set the DIBv5 to the clipboard DataObject
+						dataObject.SetData(FORMAT_17, true, dibV5Stream);
 					}
 				} catch (Exception dibEx) {
 					LOG.Error("Error creating DIB for the Clipboard.", dibEx);
@@ -590,11 +631,43 @@ EndSelection:<<<<<<<4
 					dibStream.Dispose();
 					dibStream = null;
 				}
+				if (dibV5Stream != null) {
+					dibV5Stream.Dispose();
+					dibV5Stream = null;
+				}
 				// cleanup if needed
 				if (disposeImage && imageToSave != null) {
 					imageToSave.Dispose();
 				}
 			}
+		}
+
+		/// <summary>
+		/// Helper method so get the bitmap bytes
+		/// See: http://stackoverflow.com/a/6570155
+		/// </summary>
+		/// <param name="bitmap">Bitmap</param>
+		/// <returns>byte[]</returns>
+		private static byte[] BitmapToByteArray(Bitmap bitmap) {
+			// Lock the bitmap's bits.  
+			Rectangle rect = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+			BitmapData bmpData = bitmap.LockBits(rect, ImageLockMode.ReadOnly, bitmap.PixelFormat);
+
+			int absStride = Math.Abs(bmpData.Stride);
+			int bytes = absStride * bitmap.Height;
+			long ptr = bmpData.Scan0.ToInt32();
+			// Declare an array to hold the bytes of the bitmap.
+			byte[] rgbValues = new byte[bytes];
+
+			for (int i = 0; i < bitmap.Height; i++) {
+				IntPtr pointer = new IntPtr(ptr + (bmpData.Stride * i));
+				Marshal.Copy(pointer, rgbValues, absStride * (bitmap.Height - i - 1), absStride);
+			}
+
+			// Unlock the bits.
+			bitmap.UnlockBits(bmpData);
+
+			return rgbValues;
 		}
 
 		/// <summary>

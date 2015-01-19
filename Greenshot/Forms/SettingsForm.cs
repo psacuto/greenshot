@@ -18,6 +18,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -43,6 +44,7 @@ namespace Greenshot {
 	/// </summary>
 	public partial class SettingsForm : BaseForm {
 		private static ILog LOG = LogManager.GetLogger(typeof(SettingsForm));
+		private static EditorConfiguration editorConfiguration = IniConfig.GetIniSection<EditorConfiguration>();
 		private readonly ToolTip _toolTip = new ToolTip();
 		private bool _inHotkey;
 
@@ -109,7 +111,7 @@ namespace Greenshot {
 		}
 
 		/// <summary>
-		/// This is a method to popululate the ComboBox
+		/// This is a method to populate the ComboBox
 		/// with the items from the enumeration
 		/// </summary>
 		/// <param name="comboBox">ComboBox to populate</param>
@@ -366,6 +368,7 @@ namespace Greenshot {
 			
 			numericUpDown_daysbetweencheck.Value = coreConfiguration.UpdateCheckInterval;
 			numericUpDown_daysbetweencheck.Enabled = !coreConfiguration.Values["UpdateCheckInterval"].IsFixed;
+			numericUpdownIconSize.Value = (coreConfiguration.IconSize.Width /16) * 16;
 			CheckDestinationSettings();
 		}
 
@@ -409,6 +412,9 @@ namespace Greenshot {
 			coreConfiguration.CaptureDelay = (int)numericUpDownWaitTime.Value;
 			coreConfiguration.DWMBackgroundColor = colorButton_window_background.SelectedColor;
 			coreConfiguration.UpdateCheckInterval = (int)numericUpDown_daysbetweencheck.Value;
+
+			Size previousValue = coreConfiguration.IconSize;
+			coreConfiguration.IconSize = new Size((int)numericUpdownIconSize.Value, (int)numericUpdownIconSize.Value);
 
 			try {
 				if (checkbox_autostartshortcut.Checked) {

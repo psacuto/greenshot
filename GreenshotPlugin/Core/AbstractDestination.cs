@@ -172,6 +172,7 @@ namespace GreenshotPlugin.Core {
 			// Generate an empty ExportInformation object, for when nothing was selected.
 			ExportInformation exportInformation = new ExportInformation(Designation, Language.GetString("settings_destination_picker"));
 			ContextMenuStrip menu = new ContextMenuStrip();
+			menu.ImageScalingSize = configuration.IconSize;
 			menu.Tag = null;
 
 			menu.Closing += delegate(object source, ToolStripDropDownClosingEventArgs eventArgs) {
@@ -321,8 +322,6 @@ namespace GreenshotPlugin.Core {
 							LOG.ErrorFormat("Skipping {0}, due to the following error: {1}", Description, ex.Message);
 						}
 						if (subDestinations.Count > 0) {
-							subDestinations.Sort();
-
 							ToolStripMenuItem destinationMenuItem = null;
 
 							if (useDynamicsOnly && subDestinations.Count == 1) {

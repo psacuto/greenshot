@@ -250,18 +250,6 @@ namespace Greenshot.Helpers {
 				AddConfiguredDestination();
 			}
 
-			// Workaround for proble with DPI retrieval, the FromHwnd activates the window...
-			WindowDetails previouslyActiveWindow = WindowDetails.GetActiveWindow();
-			// Workaround for changed DPI settings in Windows 7
-			using (Graphics graphics = Graphics.FromHwnd(MainForm.Instance.Handle)) {
-				_capture.CaptureDetails.DpiX = graphics.DpiX;
-				_capture.CaptureDetails.DpiY = graphics.DpiY;
-			}
-			if (previouslyActiveWindow != null) {
-				// Set previouslyActiveWindow as foreground window
-				previouslyActiveWindow.ToForeground();
-			}
-
 			// Delay for the Context menu
 			if (conf.CaptureDelay > 0) {
 				Thread.Sleep(conf.CaptureDelay);
@@ -283,6 +271,7 @@ namespace Greenshot.Helpers {
 				case CaptureMode.Window:
 					_capture = WindowCapture.CaptureScreen(_capture);
 					_capture.CaptureDetails.AddMetaData("source", "Screen");
+					SetDPI();
 					CaptureWithFeedback();
 					break;
 				case CaptureMode.ActiveWindow:
@@ -296,11 +285,13 @@ namespace Greenshot.Helpers {
 						_capture.CaptureDetails.AddMetaData("source", "Screen");
 						_capture.CaptureDetails.Title = "Screen";
 					}
+					SetDPI();
 					HandleCapture();
 					break;
 				case CaptureMode.IE:
 					if (IECaptureHelper.CaptureIE(_capture, SelectedCaptureWindow) != null) {
 						_capture.CaptureDetails.AddMetaData("source", "Internet Explorer");
+						SetDPI();
 						HandleCapture();
 					}
 					break;
@@ -309,7 +300,7 @@ namespace Greenshot.Helpers {
 					bool captureTaken = false;
 					switch (_screenCaptureMode) {
 						case ScreenCaptureMode.Auto:
-							Point mouseLocation = WindowCapture.GetCursorLocation();
+							Point mouseLocation = User32.GetCursorLocation();
 							foreach (Screen screen in Screen.AllScreens) {
 								if (screen.Bounds.Contains(mouseLocation)) {
 									_capture = WindowCapture.CaptureRectangle(_capture, screen.Bounds);
@@ -331,6 +322,7 @@ namespace Greenshot.Helpers {
 					if (!captureTaken) {
 						_capture = WindowCapture.CaptureScreen(_capture);
 					}
+					SetDPI();
 					HandleCapture();
 					break;
 				case CaptureMode.Clipboard:
@@ -403,8 +395,8 @@ namespace Greenshot.Helpers {
 					}
 					break;
 				case CaptureMode.LastRegion:
-					if (!RuntimeConfig.LastCapturedRegion.IsEmpty) {
-						_capture = WindowCapture.CaptureRectangle(_capture, RuntimeConfig.LastCapturedRegion);
+					if (!conf.LastCapturedRegion.IsEmpty) {
+						_capture = WindowCapture.CaptureRectangle(_capture, conf.LastCapturedRegion);
 						// TODO: Reactive / check if the elements code is activated
 						//if (windowDetailsThread != null) {
 						//	windowDetailsThread.Join();
@@ -412,7 +404,7 @@ namespace Greenshot.Helpers {
 
 						// Set capture title, fixing bug #3569703
 						foreach (WindowDetails window in WindowDetails.GetVisibleWindows()) {
-							Point estimatedLocation = new Point(RuntimeConfig.LastCapturedRegion.X + (RuntimeConfig.LastCapturedRegion.Width / 2), RuntimeConfig.LastCapturedRegion.Y + (RuntimeConfig.LastCapturedRegion.Height / 2));
+							Point estimatedLocation = new Point(conf.LastCapturedRegion.X + (conf.LastCapturedRegion.Width / 2), conf.LastCapturedRegion.Y + (conf.LastCapturedRegion.Height / 2));
 							if (window.Contains(estimatedLocation)) {
 								_selectedCaptureWindow = window;
 								_capture.CaptureDetails.Title = _selectedCaptureWindow.Text;
@@ -424,6 +416,7 @@ namespace Greenshot.Helpers {
 						//capture.MoveElements(capture.ScreenBounds.Location.X - capture.Location.X, capture.ScreenBounds.Location.Y - capture.Location.Y);
 
 						_capture.CaptureDetails.AddMetaData("source", "screen");
+						SetDPI();
 						HandleCapture();
 					}
 					break;
@@ -432,10 +425,12 @@ namespace Greenshot.Helpers {
 					if (Rectangle.Empty.Equals(_captureRect)) {
 						_capture = WindowCapture.CaptureScreen(_capture);
 						_capture.CaptureDetails.AddMetaData("source", "screen");
+						SetDPI();
 						CaptureWithFeedback();
 					} else {
 						_capture = WindowCapture.CaptureRectangle(_capture, _captureRect);
 						_capture.CaptureDetails.AddMetaData("source", "screen");
+						SetDPI();
 						HandleCapture();
 					}
 					break;
@@ -718,7 +713,7 @@ namespace Greenshot.Helpers {
 				return false;
 			}
 			// Fix for Bug #3430560 
-			RuntimeConfig.LastCapturedRegion = _selectedCaptureWindow.WindowRectangle;
+			conf.LastCapturedRegion = _selectedCaptureWindow.WindowRectangle;
 			bool returnValue = CaptureWindow(_selectedCaptureWindow, _capture, conf.WindowCaptureMode) != null;
 			return returnValue;
 		}
@@ -806,7 +801,7 @@ namespace Greenshot.Helpers {
 					windowCaptureMode = WindowCaptureMode.Screen;
 
 					// Change to GDI, if allowed
-					if (!windowToCapture.isMetroApp && WindowCapture.isGDIAllowed(process)) {
+					if (!windowToCapture.isMetroApp && WindowCapture.IsGdiAllowed(process)) {
 						if (!dwmEnabled && isWPF(process)) {
 							// do not use GDI, as DWM is not enabled and the application uses PresentationFramework.dll -> isWPF
 							LOG.InfoFormat("Not using GDI for windows of process {0}, as the process uses WPF", process.ProcessName);
@@ -817,20 +812,20 @@ namespace Greenshot.Helpers {
 
 					// Change to DWM, if enabled and allowed
 					if (dwmEnabled) {
-						if (windowToCapture.isMetroApp || WindowCapture.isDWMAllowed(process)) {
+						if (windowToCapture.isMetroApp || WindowCapture.IsDwmAllowed(process)) {
 							windowCaptureMode = WindowCaptureMode.Aero;
 						}
 					}
 				} else if (windowCaptureMode == WindowCaptureMode.Aero || windowCaptureMode == WindowCaptureMode.AeroTransparent) {
-					if (!dwmEnabled || (!windowToCapture.isMetroApp && !WindowCapture.isDWMAllowed(process))) {
+					if (!dwmEnabled || (!windowToCapture.isMetroApp && !WindowCapture.IsDwmAllowed(process))) {
 						// Take default screen
 						windowCaptureMode = WindowCaptureMode.Screen;
 						// Change to GDI, if allowed
-						if (WindowCapture.isGDIAllowed(process)) {
+						if (WindowCapture.IsGdiAllowed(process)) {
 							windowCaptureMode = WindowCaptureMode.GDI;
 						}
 					}
-				} else if (windowCaptureMode == WindowCaptureMode.GDI && !WindowCapture.isGDIAllowed(process)) {
+				} else if (windowCaptureMode == WindowCaptureMode.GDI && !WindowCapture.IsGdiAllowed(process)) {
 					// GDI not allowed, take screen
 					windowCaptureMode = WindowCaptureMode.Screen;
 				}
@@ -843,7 +838,7 @@ namespace Greenshot.Helpers {
 					ICapture tmpCapture = null;
 					switch (windowCaptureMode) {
 						case WindowCaptureMode.GDI:
-							if (WindowCapture.isGDIAllowed(process)) {
+							if (WindowCapture.IsGdiAllowed(process)) {
 								if (windowToCapture.Iconic) {
 									// Restore the window making sure it's visible!
 									windowToCapture.Restore();
@@ -853,15 +848,15 @@ namespace Greenshot.Helpers {
 								tmpCapture = windowToCapture.CaptureGDIWindow(captureForWindow);
 								if (tmpCapture != null) {
 									// check if GDI capture any good, by comparing it with the screen content
-									int blackCountGDI = ImageHelper.CountColor((Bitmap)tmpCapture.Image, Color.Black, false);
+									int blackCountGDI = ImageHelper.CountColor(tmpCapture.Image, Color.Black, false);
 									int GDIPixels = tmpCapture.Image.Width * tmpCapture.Image.Height;
 									int blackPercentageGDI = (blackCountGDI * 100) / GDIPixels;
 									if (blackPercentageGDI >= 1) {
 										int screenPixels = windowRectangle.Width * windowRectangle.Height;
 										using (ICapture screenCapture = new Capture()) {
 											screenCapture.CaptureDetails = captureForWindow.CaptureDetails;
-											if (WindowCapture.CaptureRectangle(screenCapture, windowRectangle) != null) {
-												int blackCountScreen = ImageHelper.CountColor((Bitmap)screenCapture.Image, Color.Black, false);
+											if (WindowCapture.CaptureRectangleFromDesktopScreen(screenCapture, windowRectangle) != null) {
+												int blackCountScreen = ImageHelper.CountColor(screenCapture.Image, Color.Black, false);
 												int blackPercentageScreen = (blackCountScreen * 100) / screenPixels;
 												if (screenPixels == GDIPixels) {
 													// "easy compare", both have the same size
@@ -901,7 +896,7 @@ namespace Greenshot.Helpers {
 							break;
 						case WindowCaptureMode.Aero:
 						case WindowCaptureMode.AeroTransparent:
-							if (windowToCapture.isMetroApp || WindowCapture.isDWMAllowed(process)) {
+							if (windowToCapture.isMetroApp || WindowCapture.IsDwmAllowed(process)) {
 								tmpCapture = windowToCapture.CaptureDWMWindow(captureForWindow, windowCaptureMode, isAutoMode);
 							}
 							if (tmpCapture != null) {
@@ -922,7 +917,7 @@ namespace Greenshot.Helpers {
 							}
 
 							try {
-								captureForWindow = WindowCapture.CaptureRectangle(captureForWindow, windowRectangle);
+								captureForWindow = WindowCapture.CaptureRectangleFromDesktopScreen(captureForWindow, windowRectangle);
 								captureTaken = true;
 							} catch (Exception e) {
 								LOG.Error("Problem capturing", e);
@@ -937,21 +932,40 @@ namespace Greenshot.Helpers {
 				if (windowToCapture != null) {
 					captureForWindow.CaptureDetails.Title = windowToCapture.Text;
 				}
-				((Bitmap)captureForWindow.Image).SetResolution(captureForWindow.CaptureDetails.DpiX, captureForWindow.CaptureDetails.DpiY);
 			}
 
 			return captureForWindow;
 		}
 
+		private void SetDPI() {
+			// Workaround for proble with DPI retrieval, the FromHwnd activates the window...
+			WindowDetails previouslyActiveWindow = WindowDetails.GetActiveWindow();
+			// Workaround for changed DPI settings in Windows 7
+			using (Graphics graphics = Graphics.FromHwnd(MainForm.Instance.Handle)) {
+				_capture.CaptureDetails.DpiX = graphics.DpiX;
+				_capture.CaptureDetails.DpiY = graphics.DpiY;
+			}
+			if (previouslyActiveWindow != null) {
+				// Set previouslyActiveWindow as foreground window
+				previouslyActiveWindow.ToForeground();
+			}
+			if (_capture.CaptureDetails != null && _capture.Image != null) {
+				((Bitmap)_capture.Image).SetResolution(_capture.CaptureDetails.DpiX, _capture.CaptureDetails.DpiY);
+			}
+
+		}
+
 		#region capture with feedback
 		private void CaptureWithFeedback() {
+			// The following, to be precise the HideApp, causes the app to close as described in BUG-1620 
 			// Added check for metro (Modern UI) apps, which might be maximized and cover the screen.
-			// as they don't want to 
-			foreach(WindowDetails app in WindowDetails.GetMetroApps()) {
-				if (app.Maximised) {
-					app.HideApp();
-				}
-			}
+			
+			//foreach(WindowDetails app in WindowDetails.GetMetroApps()) {
+			//	if (app.Maximised) {
+			//		app.HideApp();
+			//	}
+			//}
+
 			using (CaptureForm captureForm = new CaptureForm(_capture, _windows)) {
 				DialogResult result = captureForm.ShowDialog();
 				if (result == DialogResult.OK) {
@@ -970,7 +984,7 @@ namespace Greenshot.Helpers {
 						// Important here is that the location needs to be offsetted back to screen coordinates!
 						Rectangle tmpRectangle = _captureRect;
 						tmpRectangle.Offset(_capture.ScreenBounds.Location.X, _capture.ScreenBounds.Location.Y);
-						RuntimeConfig.LastCapturedRegion = tmpRectangle;
+						conf.LastCapturedRegion = tmpRectangle;
 						HandleCapture();
 					}
 				}

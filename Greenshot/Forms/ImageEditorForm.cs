@@ -73,6 +73,13 @@ namespace Greenshot {
 
 		public static List<IImageEditor> Editors {
 			get {
+				try {
+					editorList.Sort(delegate(IImageEditor e1, IImageEditor e2) {
+						return e1.Surface.CaptureDetails.Title.CompareTo(e2.Surface.CaptureDetails.Title);
+					});
+				} catch(Exception ex) {
+					LOG.Warn("Sorting of editors failed.", ex);
+				}
 				return editorList;
 			}
 		}
@@ -186,7 +193,31 @@ namespace Greenshot {
 
 			ApplyLanguage();
 		}
-		
+
+		/// <summary>
+		/// Workaround for having a border around the dropdown
+		/// See: http://stackoverflow.com/questions/9560812/change-border-of-toolstripcombobox-with-flat-style
+		/// </summary>
+		/// <param name="sender"></param>
+		/// <param name="e"></param>
+		void propertiesToolStrip_Paint(object sender, PaintEventArgs e) {
+			using (Pen cbBorderPen = new Pen(SystemColors.ActiveBorder)) {
+				// Loop over all items in the propertiesToolStrip
+				foreach (ToolStripItem item in propertiesToolStrip.Items) {
+					ToolStripComboBox cb = item as ToolStripComboBox;
+					// Only ToolStripComboBox that are visible
+					if (cb == null || !cb.Visible) {
+						continue;
+					}
+					// Calculate the rectangle
+					Rectangle r = new Rectangle(cb.ComboBox.Location.X - 1, cb.ComboBox.Location.Y - 1, cb.ComboBox.Size.Width + 1, cb.ComboBox.Size.Height + 1);
+
+					// Draw the rectangle
+					e.Graphics.DrawRectangle(cbBorderPen, r);
+				}
+			}
+		}
+
 		/// <summary>
 		/// Get all the destinations and display them in the file menu and the buttons
 		/// </summary>
@@ -256,11 +287,11 @@ namespace Greenshot {
 					}
 				};
 
-				toolStrip1.Items.Insert(toolStrip1.Items.IndexOf(toolStripSeparator16), destinationButton);
+				destinationsToolStrip.Items.Insert(destinationsToolStrip.Items.IndexOf(toolStripSeparator16), destinationButton);
 				
 			} else {
 				ToolStripButton destinationButton = new ToolStripButton();
-				toolStrip1.Items.Insert(toolStrip1.Items.IndexOf(toolStripSeparator16), destinationButton);
+				destinationsToolStrip.Items.Insert(destinationsToolStrip.Items.IndexOf(toolStripSeparator16), destinationButton);
 				destinationButton.DisplayStyle = ToolStripItemDisplayStyle.Image;
 				destinationButton.Size = new Size(23, 22);
 				destinationButton.Text = toolstripDestination.Description;
@@ -309,6 +340,7 @@ namespace Greenshot {
 			fileStripMenuItem.DropDownItems.Add(closeToolStripMenuItem);
 		}
 
+		private delegate void SurfaceMessageReceivedThreadSafeDelegate(object sender, SurfaceMessageEventArgs eventArgs);
 		/// <summary>
 		/// This is the SufraceMessageEvent receiver which display a message in the status bar if the
 		/// surface is exported. It also updates the title to represent the filename, if there is one.
@@ -316,22 +348,26 @@ namespace Greenshot {
 		/// <param name="sender"></param>
 		/// <param name="eventArgs"></param>
 		private void SurfaceMessageReceived(object sender, SurfaceMessageEventArgs eventArgs) {
-			string dateTime = DateTime.Now.ToLongTimeString();
-			// TODO: Fix that we only open files, like in the tooltip
-			switch (eventArgs.MessageType) {
-				case SurfaceMessageTyp.FileSaved:
-					// Put the event message on the status label and attach the context menu
-					updateStatusLabel(dateTime + " - " + eventArgs.Message, fileSavedStatusContextMenu);
-					// Change title
-					Text = eventArgs.Surface.LastSaveFullPath + " - " + Language.GetString(LangKey.editor_title);
-					break;
-				case SurfaceMessageTyp.Error:
-				case SurfaceMessageTyp.Info:
-				case SurfaceMessageTyp.UploadedUri:
-				default:
-					// Put the event message on the status label
-					updateStatusLabel(dateTime + " - " + eventArgs.Message);
-					break;
+			if (InvokeRequired) {
+				this.Invoke(new SurfaceMessageReceivedThreadSafeDelegate(SurfaceMessageReceived), new object[] { sender, eventArgs });
+			} else {
+				string dateTime = DateTime.Now.ToLongTimeString();
+				// TODO: Fix that we only open files, like in the tooltip
+				switch (eventArgs.MessageType) {
+					case SurfaceMessageTyp.FileSaved:
+						// Put the event message on the status label and attach the context menu
+						updateStatusLabel(dateTime + " - " + eventArgs.Message, fileSavedStatusContextMenu);
+						// Change title
+						Text = eventArgs.Surface.LastSaveFullPath + " - " + Language.GetString(LangKey.editor_title);
+						break;
+					case SurfaceMessageTyp.Error:
+					case SurfaceMessageTyp.Info:
+					case SurfaceMessageTyp.UploadedUri:
+					default:
+						// Put the event message on the status label
+						updateStatusLabel(dateTime + " - " + eventArgs.Message);
+						break;
+				}
 			}
 		}
 
@@ -556,6 +592,14 @@ namespace Greenshot {
 			BtnTextClick(sender, e);
 		}
 		
+		void AddSpeechBubbleToolStripMenuItemClick(object sender, EventArgs e) {
+			BtnSpeechBubbleClick(sender, e);
+		}
+		
+		void AddCounterToolStripMenuItemClick(object sender, EventArgs e) {
+			BtnStepLabelClick(sender, e);
+		}
+		
 		void DrawLineToolStripMenuItemClick(object sender, EventArgs e) {
 			BtnLineClick(sender, e);
 		}
@@ -746,6 +790,12 @@ namespace Greenshot {
 						break;
 					case Keys.T:
 						BtnTextClick(sender, e);
+						break;
+					case Keys.S:
+						BtnSpeechBubbleClick(sender, e);
+						break;
+					case Keys.I:
+						BtnStepLabelClick(sender, e);
 						break;
 					case Keys.H:
 						BtnHighlightClick(sender, e);
@@ -948,8 +998,8 @@ namespace Greenshot {
 			new BidirectionalBinding(fontSizeUpDown, "Value", surface.FieldAggregator.GetField(FieldType.FONT_SIZE), "Value", DecimalFloatConverter.GetInstance(), NotNullValidator.GetInstance());
 			new BidirectionalBinding(fontBoldButton, "Checked", surface.FieldAggregator.GetField(FieldType.FONT_BOLD), "Value", NotNullValidator.GetInstance());
 			new BidirectionalBinding(fontItalicButton, "Checked", surface.FieldAggregator.GetField(FieldType.FONT_ITALIC), "Value", NotNullValidator.GetInstance());
-			new BidirectionalBinding(textHorizontalAlignmentButton, "SelectedTag", surface.FieldAggregator.GetField(FieldType.TEXT_HORIZONTAL_ALIGNMENT), "Value", HorizontalAlignmentConverter.GetInstance(), NotNullValidator.GetInstance());
-			new BidirectionalBinding(textVerticalAlignmentButton, "SelectedTag", surface.FieldAggregator.GetField(FieldType.TEXT_VERTICAL_ALIGNMENT), "Value", VerticalAlignmentConverter.GetInstance(), NotNullValidator.GetInstance());
+			new BidirectionalBinding(textHorizontalAlignmentButton, "SelectedTag", surface.FieldAggregator.GetField(FieldType.TEXT_HORIZONTAL_ALIGNMENT), "Value", NotNullValidator.GetInstance());
+			new BidirectionalBinding(textVerticalAlignmentButton, "SelectedTag", surface.FieldAggregator.GetField(FieldType.TEXT_VERTICAL_ALIGNMENT), "Value", NotNullValidator.GetInstance());
 			new BidirectionalBinding(shadowButton, "Checked", surface.FieldAggregator.GetField(FieldType.SHADOW), "Value", NotNullValidator.GetInstance());
 			new BidirectionalBinding(previewQualityUpDown, "Value", surface.FieldAggregator.GetField(FieldType.PREVIEW_QUALITY), "Value", DecimalDoublePercentageConverter.GetInstance(), NotNullValidator.GetInstance());
 			new BidirectionalBinding(obfuscateModeButton, "SelectedTag", surface.FieldAggregator.GetField(FieldType.PREPARED_FILTER_OBFUSCATE), "Value");
@@ -1001,20 +1051,24 @@ namespace Greenshot {
 		/// </summary>
 		private void refreshEditorControls() {
 			int stepLabels = surface.CountStepLabels(null);
+		    Image icon;
 			if (stepLabels <= 20) {
-				this.btnStepLabel.Image = ((System.Drawing.Image)(resources.GetObject(string.Format("btnStepLabel{0:00}.Image", stepLabels))));
+			    icon = ((System.Drawing.Image)(resources.GetObject(string.Format("btnStepLabel{0:00}.Image", stepLabels))));
 			} else {
-				this.btnStepLabel.Image = ((System.Drawing.Image)(resources.GetObject("btnStepLabel20+.Image")));
+			    icon = ((System.Drawing.Image)(resources.GetObject("btnStepLabel20+.Image")));
 			}
-			FieldAggregator props = surface.FieldAggregator;
+            this.btnStepLabel.Image = icon;
+            this.addCounterToolStripMenuItem.Image = icon;
+
+		    FieldAggregator props = surface.FieldAggregator;
 			// if a confirmable element is selected, we must disable most of the controls
 			// since we demand confirmation or cancel for confirmable element
 			if (props.HasFieldValue(FieldType.FLAGS) && ((FieldType.Flag)props.GetFieldValue(FieldType.FLAGS) & FieldType.Flag.CONFIRMABLE) == FieldType.Flag.CONFIRMABLE) {
 				// disable most controls
 				if(!controlsDisabledDueToConfirmable) {
 					ToolStripItemEndisabler.Disable(menuStrip1);
-					ToolStripItemEndisabler.Disable(toolStrip1);
-					ToolStripItemEndisabler.Disable(toolStrip2);
+					ToolStripItemEndisabler.Disable(destinationsToolStrip);
+					ToolStripItemEndisabler.Disable(toolsToolStrip);
 					ToolStripItemEndisabler.Enable(closeToolStripMenuItem);
 					ToolStripItemEndisabler.Enable(helpToolStripMenuItem);
 					ToolStripItemEndisabler.Enable(aboutToolStripMenuItem);
@@ -1024,8 +1078,8 @@ namespace Greenshot {
 			} else if(controlsDisabledDueToConfirmable) {
 				// re-enable disabled controls, confirmable element has either been confirmed or cancelled
 				ToolStripItemEndisabler.Enable(menuStrip1);
-				ToolStripItemEndisabler.Enable(toolStrip1);
-				ToolStripItemEndisabler.Enable(toolStrip2);
+				ToolStripItemEndisabler.Enable(destinationsToolStrip);
+				ToolStripItemEndisabler.Enable(toolsToolStrip);
 				controlsDisabledDueToConfirmable = false;
 			}
 			
@@ -1191,11 +1245,12 @@ namespace Greenshot {
 				windowToCapture = CaptureHelper.SelectCaptureWindow(windowToCapture);
 				if (windowToCapture != null) {
 					capture = CaptureHelper.CaptureWindow(windowToCapture, capture, coreConfiguration.WindowCaptureMode);
-					Activate();
-					WindowDetails.ToForeground(Handle);
-					if (capture!= null && capture.Image != null) {
+					if (capture != null && capture.CaptureDetails != null && capture.Image != null) {
+						((Bitmap)capture.Image).SetResolution(capture.CaptureDetails.DpiX, capture.CaptureDetails.DpiY);
 						surface.AddImageContainer((Bitmap)capture.Image, 100, 100);
 					}
+					Activate();
+					WindowDetails.ToForeground(Handle);
 				}
 
 				if (capture!= null) {
@@ -1223,7 +1278,7 @@ namespace Greenshot {
 		/// <param name="sender"></param>
 		/// <param name="e"></param>
 		void AddDropshadowToolStripMenuItemClick(object sender, EventArgs e) {
-			DropShadowEffect dropShadowEffect= new DropShadowEffect();
+			DropShadowEffect dropShadowEffect = editorConfiguration.DropShadowEffectSettings;
 			// TODO: Use the dropshadow settings form to make it possible to change the default values
 			DialogResult result = new DropShadowSettingsForm(dropShadowEffect).ShowDialog(this);
 			if (result == DialogResult.OK) {
@@ -1253,7 +1308,7 @@ namespace Greenshot {
 		/// <param name="sender"></param>
 		/// <param name="e"></param>
 		void TornEdgesToolStripMenuItemClick(object sender, EventArgs e) {
-			TornEdgeEffect tornEdgeEffect = new TornEdgeEffect();
+			TornEdgeEffect tornEdgeEffect = editorConfiguration.TornEdgeEffectSettings;
 			// TODO: Use the dropshadow settings form to make it possible to change the default values
 			DialogResult result = new TornEdgeSettingsForm(tornEdgeEffect).ShowDialog(this);
 			if (result == DialogResult.OK) {

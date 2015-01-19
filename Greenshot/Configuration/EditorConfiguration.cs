@@ -25,6 +25,7 @@ using System.Drawing;
 using Greenshot.Drawing.Fields;
 using GreenshotPlugin.UnmanagedHelpers;
 using Greenshot.IniFile;
+using Greenshot.Core;
 
 namespace Greenshot.Configuration {
 	/// <summary>
@@ -54,9 +55,14 @@ namespace Greenshot.Configuration {
 		public bool ReuseEditor;
 		[IniProperty("FreehandSensitivity", Description = "The smaller this number, the less smoothing is used. Decrease for detailed drawing, e.g. when using a pen. Increase for smoother lines. e.g. when you want to draw a smooth line.", DefaultValue = "3")]
 		public int FreehandSensitivity;
-
 		[IniProperty("SuppressSaveDialogAtClose", Description="Suppressed the 'do you want to save' dialog when closing the editor.", DefaultValue="False")]
 		public bool SuppressSaveDialogAtClose;
+
+		[IniProperty("DropShadowEffectSettings", Description = "Settings for the drop shadow effect.")]
+		public DropShadowEffect DropShadowEffectSettings;
+
+		[IniProperty("TornEdgeEffectSettings", Description = "Settings for the torn edge effect.")]
+		public TornEdgeEffect TornEdgeEffectSettings;
 
 		public override void AfterLoad() {
 			base.AfterLoad();
@@ -64,6 +70,7 @@ namespace Greenshot.Configuration {
 				RecentColors = new List<Color>();
 			}
 		}
+
 		/// <param name="requestingType">Type of the class for which to create the field</param>
 		/// <param name="fieldType">FieldType of the field to construct</param>
 		/// <param name="scope">FieldType of the field to construct</param>

@@ -23,18 +23,13 @@
 ################################################################
 
 $version=$env:APPVEYOR_BUILD_VERSION
+$buildType=$env:build_type
 $gitcommit=$env:APPVEYOR_REPO_COMMIT
 $gitcommit=$gitcommit.SubString(0, [math]::Min($gitcommit.Length, 7))
-$detailversion=$version + '-' + $gitcommit
+$detailversion=$version + '-' + $gitcommit + " " + $buildType
 $release=(([version]$version).build) % 2 -eq 1
-$fileversion=$version
-# Add the UNSTABLE, if we aren't a release -> the build is even. (major.minor.build.revision)
-if ( ! $release) {
-	$fileversion=$version + "-UNSTABLE"
-	$detailversion=$detailversion + " UNSTABLE"
-} else {
-	$detailversion=$detailversion + " Release"
-}
+$fileversion=$version + "-" + $buildType
+
 Write-Host "Building Greenshot $detailversion"
 
 # Create a MD5 string for the supplied filename
@@ -139,36 +134,36 @@ Function PackagePortable {
 Function PackageZip {
 	$sourcebase = "$(get-location)\Greenshot\bin\Release"
 	$destbase = "$(get-location)\Greenshot\releases"
-	$destinstaller = "$destbase\NO-INSTALLER"
+	$destzip = "$destbase\NO-INSTALLER"
 
 	# Only remove the zip we are going to create, to prevent adding but keeping the history
 	if (Test-Path  ("$destbase\Greenshot-NO-INSTALLER-$fileversion.zip")) {
 		Remove-Item "$destbase\Greenshot-NO-INSTALLER-$fileversion.zip" -Confirm:$false
 	}
 	# Remove the directory to create the files in
-	if (Test-Path  ("$destinstaller")) {
-		Remove-Item "$destinstaller" -recurse -Confirm:$false
+	if (Test-Path  ("$destzip")) {
+		Remove-Item "$destzip" -recurse -Confirm:$false
 	}
-	New-Item -ItemType directory -Path "$destinstaller" | Out-Null
+	New-Item -ItemType directory -Path "$destzip" | Out-Null
 
-	echo ";dummy config, used to make greenshot store the configuration in this directory" | Set-Content "$destinstaller\greenshot.ini" -encoding UTF8
-	echo ";In this file you should add your default settings" | Set-Content "$destinstaller\greenshot-defaults.ini" -encoding UTF8
-	echo ";In this file you should add your fixed settings" | Set-Content "$destinstaller\greenshot-fixed.ini" -encoding UTF8
+	echo ";dummy config, used to make greenshot store the configuration in this directory" | Set-Content "$destzip\greenshot.ini" -encoding UTF8
+	echo ";In this file you should add your default settings" | Set-Content "$destzip\greenshot-defaults.ini" -encoding UTF8
+	echo ";In this file you should add your fixed settings" | Set-Content "$destzip\greenshot-fixed.ini" -encoding UTF8
 
 	$INCLUDE=@("*.gsp", "*.dll", "*.exe", "*.config")
 	Get-ChildItem -Path "$sourcebase\Plugins\" -Recurse -Include $INCLUDE | foreach {
-		$path = $_.fullname -replace ".*\\Plugins\\", "$destinstaller\Plugins\"
+		$path = $_.fullname -replace ".*\\Plugins\\", "$destzip\Plugins\"
 		New-Item -ItemType File -Path "$path" -Force | Out-Null
 		Copy-Item -Path $_ -Destination "$path" -Force
 	}
 	
 	$INCLUDE=@("help-*.html","language-*.xml")
 	Get-ChildItem -Path "$(get-location)\Greenshot\Languages\" -Recurse -Include $INCLUDE -Exclude "*installer*","*website*" | foreach {
-		$path = $_.fullname -replace ".*\\Languages\\", "$destinstaller\Languages\"
+		$path = $_.fullname -replace ".*\\Languages\\", "$destzip\Languages\"
 		New-Item -ItemType File -Path "$path" -Force | Out-Null
 		Copy-Item -Path $_ -Destination "$path" -Force
 	}
-	Copy-Item -Path "$sourcebase\Languages\Plugins\" -Destination "$destinstaller\Languages\Plugins\" -Recurse
+	Copy-Item -Path "$sourcebase\Languages\Plugins\" -Destination "$destzip\Languages\Plugins\" -Recurse
 	
 	@( "$sourcebase\checksum.MD5",
 		"$sourcebase\Greenshot.exe",
@@ -176,11 +171,11 @@ Function PackageZip {
 		"$sourcebase\GreenshotPlugin.dll",
 		"$sourcebase\log4net.dll",
 		"$sourcebase\log4net.xml",
-		"$destbase\additional_files\*.txt" ) | foreach { Copy-Item $_ "$destinstaller\" }
+		"$destbase\additional_files\*.txt" ) | foreach { Copy-Item $_ "$destzip\" }
 
 	$zipOutput = "$(get-location)\zip"
 	$zip7 = "$(get-location)\greenshot\tools\7zip\7za.exe"
-	$arguments = @('a', '-mx9', '-tzip', '-r', "$destbase\Greenshot-NO-INSTALLER-$fileversion.zip", "$destinstaller\*")
+	$arguments = @('a', '-mx9', '-tzip', '-r', "$destbase\Greenshot-NO-INSTALLER-$fileversion.zip", "$destzip\*")
 	Write-Host "Starting $zip7 $arguments"
 	$zipResult = Start-Process -wait -PassThru "$zip7" -ArgumentList $arguments -NoNewWindow -RedirectStandardOutput "$zipOutput.log" -RedirectStandardError "$zipOutput.error"
 	Write-Host "Log output:"
@@ -191,7 +186,49 @@ Function PackageZip {
 		exit -1
 	}
 	Start-Sleep -m 1500
-	Remove-Item "$destinstaller" -Recurse -Confirm:$false
+	Remove-Item "$destzip" -Recurse -Confirm:$false
+	return
+}
+
+# This function creates the debug symbols .zip
+Function PackageDbgSymbolsZip {
+	$sourcebase = "$(get-location)\Greenshot\bin\Release"
+	$destbase = "$(get-location)\Greenshot\releases"
+	$destdbgzip = "$destbase\DEBUGSYMBOLS"
+
+	# Only remove the zip we are going to create, to prevent adding but keeping the history
+	if (Test-Path  ("$destbase\Greenshot-DEBUGSYMBOLS-$fileversion.zip")) {
+		Remove-Item "$destbase\Greenshot-DEBUGSYMBOLS-$fileversion.zip" -Confirm:$false
+	}
+	# Remove the directory to create the files in
+	if (Test-Path  ("$destdbgzip")) {
+		Remove-Item "$destdbgzip" -recurse -Confirm:$false
+	}
+	New-Item -ItemType directory -Path "$destdbgzip" | Out-Null
+
+	$INCLUDE=@("*.pdb")
+	Get-ChildItem -Path "$sourcebase\Plugins\" -Recurse -Include $INCLUDE | foreach {
+		$path = $_.fullname -replace ".*\\Plugins\\", "$destdbgzip\Plugins\"
+		New-Item -ItemType File -Path "$path" -Force | Out-Null
+		Copy-Item -Path $_ -Destination "$path" -Force
+	}
+	
+	@( "$sourcebase\*.pdb") | foreach { Copy-Item $_ "$destdbgzip\" }
+
+	$zipOutput = "$(get-location)\dbgzip"
+	$zip7 = "$(get-location)\greenshot\tools\7zip\7za.exe"
+	$arguments = @('a', '-mx9', '-tzip', '-r', "$destbase\Greenshot-DEBUGSYMBOLS-$fileversion.zip", "$destdbgzip\*")
+	Write-Host "Starting $zip7 $arguments"
+	$zipResult = Start-Process -wait -PassThru "$zip7" -ArgumentList $arguments -NoNewWindow -RedirectStandardOutput "$zipOutput.log" -RedirectStandardError "$zipOutput.error"
+	Write-Host "Log output:"
+	Get-Content "$zipOutput.log"| Write-Host
+	if ($zipResult.ExitCode -ne 0) {
+		Write-Host "Error output:"
+		Get-Content "$zipOutput.error"| Write-Host
+		exit -1
+	}
+	Start-Sleep -m 1500
+	Remove-Item "$destdbgzip" -Recurse -Confirm:$false
 	return
 }
 
@@ -212,6 +249,29 @@ Function PackageInstaller {
 	return
 }
 
+# This function tags the current 
+Function TagCode {
+	Write-Host "Add remote via git, so SSH key works"
+	git remote add tagorigin git@bitbucket.org:greenshot/greenshot.git
+	Write-Host "Setting id_rsa with the content from environment rsakey so we can push a tag"
+	# Write the RSA key contents from the AppVeyor rsakey UI ENV variable to the private key file
+	$key = $env:rsakey
+	$fileContent = "-----BEGIN RSA PRIVATE KEY-----" + "`n" 
+	for ($i = 0; $i -lt $key.Length / 64; $i++) {
+		$min = [math]::min(64, $key.Length - ($i * 64));
+		$fileContent += $key.substring($i*64, $min) + "`n";
+	} 
+	$fileContent += "-----END RSA PRIVATE KEY-----" + "`n" 
+	Set-Content c:\users\appveyor\.ssh\id_rsa $fileContent
+	git config --global user.email "getgreenshot@gmail.com"
+	git config --global user.name "Greenshot-AppVeyor"
+	Write-Host "Tagging repo with $fileversion"
+	git tag -a $fileversion -m 'Build from AppVeyor'
+	Write-Host "Pushing tag $fileversion to remote"
+	git push tagorigin $fileversion
+	return
+}
+
 FillTemplates
 
 echo "Generating MD5"
@@ -226,3 +286,9 @@ PackageZip
 
 echo "Generating Portable"
 PackagePortable
+
+echo "Generating Debug Symbols ZIP"
+PackageDbgSymbolsZip
+
+echo "build successful, tagging with $fileversion"
+TagCode

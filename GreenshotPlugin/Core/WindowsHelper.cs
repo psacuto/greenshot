@@ -18,31 +18,29 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Windows.Forms;
+
 using Greenshot.IniFile;
 using Greenshot.Interop;
 using Greenshot.Plugin;
 using GreenshotPlugin.UnmanagedHelpers;
+using log4net;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Windows.Forms;
+
 /// <summary>
 /// Code for handling with "windows"
 /// Main code is taken from vbAccelerator, location:
 /// http://www.vbaccelerator.com/home/NET/Code/Libraries/Windows/Enumerating_Windows/article.asp
 /// but a LOT of changes/enhancements were made to adapt it for Greenshot.
 /// </summary>
-using log4net;
-
-namespace GreenshotPlugin.Core  {
+namespace GreenshotPlugin.Core {
 	#region EnumWindows
 	/// <summary>
 	/// EnumWindows wrapper for .NET
@@ -73,7 +71,7 @@ namespace GreenshotPlugin.Core  {
 		/// <summary>
 		/// Gets all child windows of the specified window
 		/// </summary>
-		/// <param name="hWndParent">Window Handle to get children for</param>
+		/// <param name="parent">Window Handle to get children for</param>
 		public WindowsEnumerator GetWindows(WindowDetails parent) {
 			if (parent != null) {
 				GetWindows(parent.Handle, null);
@@ -167,16 +165,14 @@ namespace GreenshotPlugin.Core  {
 		private const string METRO_GUTTER_CLASS = "ImmersiveGutter";
 		
 		private static ILog LOG = LogManager.GetLogger(typeof(WindowDetails));
-		private static Dictionary<string, List<string>> classnameTree = new Dictionary<string, List<string>>();
 		private static CoreConfiguration conf = IniConfig.GetIniSection<CoreConfiguration>();
 		private static List<IntPtr> ignoreHandles = new List<IntPtr>();
-		private static Dictionary<string, Image> iconCache = new Dictionary<string, Image>();
 		private static List<string> excludeProcessesFromFreeze = new List<string>();
 		private static IAppVisibility appVisibility = null;
 		
 		static WindowDetails() {
 			try {
-				// Only try to instanciate when Windows 8 or later.
+				// Only try to instantiate when Windows 8 or later.
 				if (Environment.OSVersion.Version.Major >= 6 && Environment.OSVersion.Version.Minor >= 2) {
 					appVisibility = COMWrapper.CreateInstance<IAppVisibility>();					
 				}
@@ -203,7 +199,6 @@ namespace GreenshotPlugin.Core  {
 				return METRO_WINDOWS_CLASS.Equals(ClassName);
 			}
 		}
-		
 		
 		public bool isGutter {
 			get {
@@ -307,17 +302,7 @@ namespace GreenshotPlugin.Core  {
 					return null;
 				}
 				try {
-					string filename = ProcessPath;
-					if (!iconCache.ContainsKey(filename)) {
-						Image icon = null;
-						using (Icon appIcon = Shell32.ExtractAssociatedIcon(filename)) {
-							if (appIcon != null) {
-								icon = appIcon.ToBitmap();
-							}
-						}
-						iconCache.Add(filename, icon);
-					}
-					return iconCache[filename];
+					return PluginUtils.GetCachedExeIcon(ProcessPath, 0);
 				} catch (Exception ex) {
 					LOG.WarnFormat("Couldn't get icon for window {0} due to: {1}", Text, ex.Message);
 					LOG.Warn(ex);
@@ -336,7 +321,15 @@ namespace GreenshotPlugin.Core  {
 			IntPtr ICON_BIG = new IntPtr(1);
 			IntPtr ICON_SMALL2 = new IntPtr(2);
 
-			IntPtr iconHandle = User32.SendMessage(hwnd, (int)WindowsMessages.WM_GETICON, ICON_SMALL2, IntPtr.Zero);
+			IntPtr iconHandle = User32.SendMessage(hwnd, (int)WindowsMessages.WM_GETICON, ICON_BIG, IntPtr.Zero);
+			if (conf.UseLargeIcons) {
+				iconHandle = User32.SendMessage(hwnd, (int)WindowsMessages.WM_GETICON, ICON_BIG, IntPtr.Zero);
+				if (iconHandle == IntPtr.Zero) {
+					iconHandle = User32.GetClassLongWrapper(hwnd, (int)ClassLongIndex.GCL_HICON);
+				}
+			} else {
+				iconHandle = User32.SendMessage(hwnd, (int)WindowsMessages.WM_GETICON, ICON_SMALL2, IntPtr.Zero);
+			}
 			if (iconHandle == IntPtr.Zero) {
 				iconHandle = User32.SendMessage(hwnd, (int)WindowsMessages.WM_GETICON, ICON_SMALL, IntPtr.Zero);
 			}
@@ -413,7 +406,7 @@ namespace GreenshotPlugin.Core  {
 		}
 		
 		/// <summary>
-		/// Retrieve the child with mathing classname
+		/// Retrieve the child with matching classname
 		/// </summary>
 		public WindowDetails GetChild(string childClassname) {
 			foreach(WindowDetails child in Children) {
@@ -425,7 +418,7 @@ namespace GreenshotPlugin.Core  {
 		}
 
 		/// <summary>
-		/// Retrieve the children with mathing classname
+		/// Retrieve the children with matching classname
 		/// </summary>
 		public IEnumerable<WindowDetails> GetChilden(string childClassname) {
 			foreach (WindowDetails child in Children) {
@@ -499,7 +492,7 @@ namespace GreenshotPlugin.Core  {
 		/// </summary>
 		/// <param name="titlePattern">The regexp to look for in the title</param>
 		/// <param name="classnamePattern">The regexp to look for in the classname</param>
-		/// <returns>List<WindowDetails> with all the found windows, or an emptry list</returns>
+		/// <returns>List<WindowDetails> with all the found windows, or an empty list</returns>
 		public List<WindowDetails> FindChildren(string titlePattern, string classnamePattern) {
 			return FindWindow(Children, titlePattern, classnamePattern);
 		}
@@ -627,7 +620,7 @@ namespace GreenshotPlugin.Core  {
 		}
 
 		/// <summary>
-		/// Gets/Sets whether the window is iconic (mimimised) or not.
+		/// Gets/Sets whether the window is iconic (mimimized) or not.
 		/// </summary>
 		public bool Iconic {
 			get {
@@ -705,7 +698,7 @@ namespace GreenshotPlugin.Core  {
 									}
 								}
 							} else {
-								// Is only partly on the screen, when this happens the app is allways visible!
+								// Is only partly on the screen, when this happens the app is always visible!
 								return true;
 							}
 						}
@@ -865,7 +858,7 @@ namespace GreenshotPlugin.Core  {
 				return (WindowStyleFlags)User32.GetWindowLongWrapper(hWnd, (int)WindowLongIndex.GWL_STYLE);
 			}
 			set {
-				User32.SetWindowLongWrapper(hWnd, (int)WindowLongIndex.GWL_STYLE, new IntPtr((uint)value));
+				User32.SetWindowLongWrapper(hWnd, (int)WindowLongIndex.GWL_STYLE, new IntPtr((long)value));
 			}
 		}
 
@@ -984,7 +977,7 @@ namespace GreenshotPlugin.Core  {
 					// Correct capture size for maximized window by offsetting the X,Y with the border size
 					captureRectangle.X += borderSize.Width;
 					captureRectangle.Y += borderSize.Height;
-					// and subtrackting the border from the size (2 times, as we move right/down for the capture without resizing)
+					// and subtracting the border from the size (2 times, as we move right/down for the capture without resizing)
 					captureRectangle.Width -= 2 * borderSize.Width;
 					captureRectangle.Height -= 2 * borderSize.Height;
 				} else if (autoMode) {
@@ -992,7 +985,7 @@ namespace GreenshotPlugin.Core  {
 					if (!doesCaptureFit) {
 						// if GDI is allowed.. (a screenshot won't be better than we comes if we continue)
 						using (Process thisWindowProcess = Process) {
-							if (!isMetroApp && WindowCapture.isGDIAllowed(thisWindowProcess)) {
+							if (!isMetroApp && WindowCapture.IsGdiAllowed(thisWindowProcess)) {
 								// we return null which causes the capturing code to try another method.
 								return null;
 							}
@@ -1035,7 +1028,7 @@ namespace GreenshotPlugin.Core  {
 									// Make sure the application window is active, so the colors & buttons are right
 									ToForeground();
 								}
-								// Make sure all changes are processed and visisble
+								// Make sure all changes are processed and visible
 								Application.DoEvents();
 								using (Bitmap blackBitmap = WindowCapture.CaptureRectangle(captureRectangle)) {
 									capturedBitmap = ApplyTransparency(blackBitmap, whiteBitmap);
@@ -1043,7 +1036,7 @@ namespace GreenshotPlugin.Core  {
 							}
 						} catch (Exception e) {
 							LOG.Debug("Exception: ", e);
-							// Some problem occured, cleanup and make a normal capture
+							// Some problem occurred, cleanup and make a normal capture
 							if (capturedBitmap != null) {
 								capturedBitmap.Dispose();
 								capturedBitmap = null;
@@ -1067,7 +1060,7 @@ namespace GreenshotPlugin.Core  {
 							// Make sure the application window is active, so the colors & buttons are right
 							ToForeground();
 						}
-						// Make sure all changes are processed and visisble
+						// Make sure all changes are processed and visible
 						Application.DoEvents();
 						// Capture from the screen
 						capturedBitmap = WindowCapture.CaptureRectangle(captureRectangle);
@@ -1135,7 +1128,7 @@ namespace GreenshotPlugin.Core  {
 		/// <summary>
 		/// Apply transparency by comparing a transparent capture with a black and white background
 		/// A "Math.min" makes sure there is no overflow, but this could cause the picture to have shifted colors.
-		/// The pictures should have been taken without differency, exect for the colors.
+		/// The pictures should have been taken without differency, except for the colors.
 		/// </summary>
 		/// <param name="blackBitmap">Bitmap with the black image</param>
 		/// <param name="whiteBitmap">Bitmap with the black image</param>
@@ -1350,7 +1343,7 @@ namespace GreenshotPlugin.Core  {
 		}
 
 		/// <summary>
-		/// Return an Image representating the Window!
+		/// Return an Image representing the Window!
 		/// As GDI+ draws it, it will be without Aero borders!
 		/// </summary>
 		public Image PrintWindow() {
@@ -1451,9 +1444,9 @@ namespace GreenshotPlugin.Core  {
 		}
 		
 		/// <summary>
-		/// Gets the Destop window
+		/// Gets the Desktop window
 		/// </summary>
-		/// <returns>WindowDetails for the destop window</returns>
+		/// <returns>WindowDetails for the desktop window</returns>
 		public static WindowDetails GetDesktopWindow() {
 			return new WindowDetails(User32.GetDesktopWindow());
 		}

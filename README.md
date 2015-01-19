@@ -32,13 +32,9 @@ But it mostly has a few more bug fixes and changes as are in our Greenshot relea
 1.2 is a "dying" branch, as we want to change a lot of the underlying application for 2.0 and most of Greenshot will need to be rewritten.
 This means pull request with fixes or **small** changes are very welcome!
 
-We now have a continuous integration system, you can find the latest unstable 1.2 builds [here](https://ci.appveyor.com/project/Greenshot/greenshot/history) 
+We now have a continuous integration system, you can find the latest unstable 1.2 builds [here](https://ci.appveyor.com/project/Greenshot/greenshot/history)
 
-
-**master**
-The master branch has that which some day will be available in Greenshot 2.0.
-As we are re factoring and changing a lot of code for 2.0, this branch should be considered highly unstable!
-We accept pull-request for 2.0, but it might be better to wait with bigger changes until things settle down a bit.
+Current build status 1.2 branch: ![Unknown](https://ci.appveyor.com/api/projects/status/yh4jnjbo03qrl60d/branch/1.2?svg=true)
 
 
 Developing for Greenshot
@@ -50,4 +46,4 @@ These keys are not in our Greenshot repository, if you want to develop on one of
 I will add a description here later to explain how include your API keys so you can develop.
 
 P.S.
-Statistics on the Greenshot project, supplied by Ohloh, can be found [here](http://www.ohloh.net/p/greenshot)
+Statistics on the Greenshot project, supplied by Open HUB, can be found [here](https://www.openhub.net/p/greenshot)

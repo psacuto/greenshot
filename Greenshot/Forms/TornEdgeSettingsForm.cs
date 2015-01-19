@@ -31,6 +31,10 @@ namespace Greenshot.Forms {
 			this.effect = effect;
 			InitializeComponent();
 			this.Icon = GreenshotResources.getGreenshotIcon();
+			ShowSettings();
+		}
+
+		private void ShowSettings() {
 			shadowCheckbox.Checked = effect.GenerateShadow;
 			shadowDarkness.Value = (int)(effect.Darkness * 40);
 			offsetX.Value = effect.ShadowOffset.X;
@@ -44,7 +48,7 @@ namespace Greenshot.Forms {
 			left.Checked = effect.Edges[3];
 		}
 
-		private void buttonOK_Click(object sender, EventArgs e) {
+		private void ButtonOK_Click(object sender, EventArgs e) {
 			effect.Darkness = (float)shadowDarkness.Value / (float)40;
 			effect.ShadowOffset = new Point((int)offsetX.Value, (int)offsetY.Value);
 			effect.ShadowSize = (int)thickness.Value;
@@ -56,11 +60,49 @@ namespace Greenshot.Forms {
 			DialogResult = DialogResult.OK;
 		}
 
-		private void shadowCheckbox_CheckedChanged(object sender, EventArgs e) {
+		private void ButtonReset_Click(object sender, EventArgs e) {
+			effect.Reset();
+			ShowSettings();
+		}
+
+		private void ShadowCheckbox_CheckedChanged(object sender, EventArgs e) {
 			thickness.Enabled = shadowCheckbox.Checked;
 			offsetX.Enabled = shadowCheckbox.Checked;
 			offsetY.Enabled = shadowCheckbox.Checked;
 			shadowDarkness.Enabled = shadowCheckbox.Checked;
 		}
+
+	    
+
+	    private void all_CheckedChanged(object sender, EventArgs e) {
+	        AnySideChangeChecked(top, all.Checked);
+            AnySideChangeChecked(right, all.Checked);
+	        AnySideChangeChecked(bottom, all.Checked);
+	        AnySideChangeChecked(left, all.Checked);
+        }
+
+        private void AnySideCheckedChanged(object sender, EventArgs e) {
+            all.CheckedChanged -= all_CheckedChanged;
+            all.Checked = top.Checked && right.Checked && bottom.Checked && left.Checked;
+            all.CheckedChanged += all_CheckedChanged;
+        }
+
+	    /// <summary>
+	    /// changes the Checked property of top/right/bottom/left checkboxes without triggering AnySideCheckedChange
+	    /// </summary>
+	    /// <param name="cb">Checkbox to change Checked</param>
+	    /// <param name="status">true to check</param>
+        private void AnySideChangeChecked(CheckBox cb, bool status) {
+	        if (status != cb.Checked) {
+	            cb.CheckedChanged -= AnySideCheckedChanged;
+	            cb.Checked = status;
+                cb.CheckedChanged += AnySideCheckedChanged;
+	        }
+	    }
+
+        private void TornEdgeSettingsForm_Load(object sender, EventArgs e)
+        {
+
+        }
 	}
 }

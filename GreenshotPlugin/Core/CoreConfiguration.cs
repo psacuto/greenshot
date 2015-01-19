@@ -18,18 +18,20 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Windows.Forms;
+
 using Greenshot.IniFile;
 using Greenshot.Plugin;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
+using System.IO;
 using System.Reflection;
+using System.Windows.Forms;
 
 namespace GreenshotPlugin.Core {
 	public enum ClipboardFormat {
-		PNG, DIB, HTML, HTMLDATAURL, BITMAP
+		PNG, DIB, HTML, HTMLDATAURL, BITMAP, DIBV5
 	}
 	public enum OutputFormat {
 		bmp, gif, jpg, png, tiff, greenshot
@@ -56,7 +58,9 @@ namespace GreenshotPlugin.Core {
 	/// Description of CoreConfiguration.
 	/// </summary>
 	[IniSection("Core", Description="Greenshot core configuration")]
-	public class CoreConfiguration : IniSection {
+	public class CoreConfiguration : IniSection, INotifyPropertyChanged {
+		public event PropertyChangedEventHandler PropertyChanged;
+
 		[IniProperty("Language", Description = "The language in IETF format (e.g. en-US)")]
 		public string Language;
 
@@ -167,7 +171,7 @@ namespace GreenshotPlugin.Core {
 		public List<string> IncludePlugins;
 		[IniProperty("ExcludePlugins", Description="Comma separated list of Plugins which are NOT allowed.")]
 		public List<string> ExcludePlugins;
-		[IniProperty("ExcludeDestinations", Description = "Comma separated list of destinations which should be disabled.", DefaultValue = "OneNote")]
+		[IniProperty("ExcludeDestinations", Description = "Comma separated list of destinations which should be disabled.")]
 		public List<string> ExcludeDestinations;
 
 		[IniProperty("UpdateCheckInterval", Description="How many days between every update check? (0=no checks)", DefaultValue="1")]
@@ -253,8 +257,68 @@ namespace GreenshotPlugin.Core {
 		[IniProperty("ProcessEXIFOrientation", Description = "When reading images from files or clipboard, use the EXIF information to correct the orientation", DefaultValue = "True")]
 		public bool ProcessEXIFOrientation;
 
-		// Specifies what THIS build is
-		public BuildStates BuildState = Assembly.GetExecutingAssembly().GetName().Version.Build % 2 == 0 ? BuildStates.UNSTABLE : BuildStates.RELEASE;
+		[IniProperty("LastCapturedRegion", Description = "The last used region, for reuse in the capture last region")]
+		public Rectangle LastCapturedRegion;
+
+		private Size _iconSize;
+		[IniProperty("IconSize", Description = "Defines the size of the icons (e.g. for the buttons in the editor), default value 16,16 anything bigger will cause scaling", DefaultValue = "16,16")]
+		public Size IconSize {
+			get {
+				return _iconSize;
+			}
+			set {
+				Size newSize = value;
+				if (newSize != Size.Empty) {
+					if (newSize.Width < 16) {
+						newSize.Width = 16;
+					} else if (newSize.Width > 256) {
+						newSize.Width = 256;
+					}
+					newSize.Width = (newSize.Width / 16) * 16;
+					if (newSize.Height < 16) {
+						newSize.Height = 16;
+					} else if (IconSize.Height > 256) {
+						newSize.Height = 256;
+					}
+					newSize.Height = (newSize.Height / 16) * 16;
+				}
+				if (_iconSize != newSize) {
+					_iconSize = value;
+					if (PropertyChanged != null) {
+						PropertyChanged(this, new PropertyChangedEventArgs("IconSize"));
+					}
+				}
+			}
+		}
+
+		[IniProperty("WebRequestTimeout", Description = "The connect timeout value for webrequets, these are seconds", DefaultValue = "10")]
+		public int WebRequestTimeout;
+		[IniProperty("WebRequestReadWriteTimeout", Description = "The read/write timeout value for webrequets, these are seconds", DefaultValue = "100")]
+		public int WebRequestReadWriteTimeout;
+
+		/// <summary>
+		/// Specifies what THIS build is
+		/// </summary>
+		public BuildStates BuildState {
+			get {
+				string informationalVersion = Application.ProductVersion;
+				if (informationalVersion != null) {
+					if (informationalVersion.ToLowerInvariant().Contains("-rc")) {
+						return BuildStates.RELEASE_CANDIDATE;
+					}
+					if (informationalVersion.ToLowerInvariant().Contains("-unstable")) {
+						return BuildStates.UNSTABLE;
+					}
+				}
+				return BuildStates.RELEASE;
+			}
+		}
+
+		public bool UseLargeIcons {
+			get {
+				return IconSize.Width >= 32 || IconSize.Height >= 32;
+			}
+		}
 
 		/// <summary>
 		/// A helper method which returns true if the supplied experimental feature is enabled
@@ -351,10 +415,24 @@ namespace GreenshotPlugin.Core {
 			// CheckForUnstable = true;
 
 			if (string.IsNullOrEmpty(LastSaveWithVersion)) {
-				// Store version, this can be used later to fix settings after an update
-				LastSaveWithVersion = Assembly.GetEntryAssembly().GetName().Version.ToString();
+				try {
+					// Store version, this can be used later to fix settings after an update
+					LastSaveWithVersion = Assembly.GetEntryAssembly().GetName().Version.ToString();
+				} catch {
+
+				}
 				// Disable the AutoReduceColors as it causes issues with Mozzila applications and some others
 				OutputFileAutoReduceColors = false;
+			}
+
+			// Enable OneNote if upgrading from 1.1
+			if(ExcludeDestinations != null && ExcludeDestinations.Contains("OneNote")) {
+				if(LastSaveWithVersion != null && LastSaveWithVersion.StartsWith("1.1")) {
+					ExcludeDestinations.Remove("OneNote");
+				} else {
+					// TODO: Remove with the release
+					ExcludeDestinations.Remove("OneNote");
+				}
 			}
 
 			if (OutputDestinations == null) {
@@ -419,6 +497,14 @@ namespace GreenshotPlugin.Core {
 			if (OutputFileReduceColorsTo > 256) {
 				OutputFileReduceColorsTo = 256;
 			}
+
+			if (WebRequestTimeout < 1) {
+				WebRequestTimeout = 10;
+			}
+			if (WebRequestReadWriteTimeout < 1) {
+				WebRequestReadWriteTimeout = 100;
+			}
 		}
+
 	}
 }

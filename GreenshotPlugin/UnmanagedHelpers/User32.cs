@@ -18,6 +18,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -28,6 +29,7 @@ using System.Windows.Forms;
 using Microsoft.Win32.SafeHandles;
 using System.Security;
 using System.Security.Permissions;
+using log4net;
 
 namespace GreenshotPlugin.UnmanagedHelpers {
 	/// <summary>
@@ -42,6 +44,8 @@ namespace GreenshotPlugin.UnmanagedHelpers {
 	/// User32 Wrappers
 	/// </summary>
 	public static class User32 {
+		private static readonly ILog LOG = LogManager.GetLogger(typeof(User32));
+		private static bool _CanCallGetPhysicalCursorPos = true;
 		public const int SC_RESTORE = 0xF120;
 		public const int SC_CLOSE = 0xF060;
 		public const int SC_MAXIMIZE = 0xF030;
@@ -55,7 +59,8 @@ namespace GreenshotPlugin.UnmanagedHelpers {
 		public const int MONITOR_DEFAULTTOPRIMARY = 1;
 		public const int MONITOR_DEFAULTTONEAREST = 2;
 		public const Int32 CURSOR_SHOWING = 0x00000001;
-				
+
+		#region DllImports
 		[DllImport("user32", SetLastError = true)]
 		[return: MarshalAs(UnmanagedType.Bool)]
 		public extern static bool IsWindowVisible(IntPtr hWnd);
@@ -186,7 +191,7 @@ namespace GreenshotPlugin.UnmanagedHelpers {
 		[DllImport("user32", SetLastError = true, CharSet = CharSet.Unicode)]
 		public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, SendMessageTimeoutFlags fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 		[DllImport("user32", SetLastError = true)]
-		public static extern bool GetPhysicalCursorPos(out POINT cursorLocation);
+		private static extern bool GetPhysicalCursorPos(out POINT cursorLocation);
 		[DllImport("user32", SetLastError=true)]
 		public static extern int MapWindowPoints(IntPtr hwndFrom, IntPtr hwndTo, ref POINT lpPoints, [MarshalAs(UnmanagedType.U4)] int cPoints);
 		[DllImport("user32", SetLastError = true)]
@@ -212,6 +217,39 @@ namespace GreenshotPlugin.UnmanagedHelpers {
 		public static extern bool ReleaseCapture();
 		[DllImport("user32", SetLastError = true)]
 		public static extern IntPtr CreateIconIndirect(ref IconInfo icon);
+
+		[DllImport("user32", SetLastError = true)]
+		public static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, DesktopAccessRight dwDesiredAccess);
+		[DllImport("user32", SetLastError = true)]
+		public static extern bool SetThreadDesktop(IntPtr hDesktop);
+		[DllImport("user32", SetLastError = true)]
+		public static extern bool CloseDesktop(IntPtr hDesktop);
+
+
+		#endregion
+
+		/// <summary>
+		/// Retrieves the cursor location safely, accounting for DPI settings in Vista/Windows 7.
+		/// </summary>
+		/// <returns>Point with cursor location, relative to the origin of the monitor setup
+		/// (i.e. negative coordinates arepossible in multiscreen setups)</returns>
+		public static Point GetCursorLocation() {
+			if (Environment.OSVersion.Version.Major >= 6 && _CanCallGetPhysicalCursorPos) {
+				POINT cursorLocation;
+				try {
+					if (GetPhysicalCursorPos(out cursorLocation)) {
+						return new Point(cursorLocation.X, cursorLocation.Y);
+					} else {
+						Win32Error error = Win32.GetLastErrorCode();
+						LOG.ErrorFormat("Error retrieving PhysicalCursorPos : {0}", Win32.GetMessage(error));
+					}
+				} catch (Exception ex) {
+					LOG.Error("Exception retrieving PhysicalCursorPos, no longer calling this. Cause :", ex);
+					_CanCallGetPhysicalCursorPos = false;
+				}
+			}
+			return new Point(Cursor.Position.X, Cursor.Position.Y);
+		}
 
 		/// <summary>
 		/// Wrapper for the GetClassLong which decides if the system is 64-bit or not and calls the right one.
@@ -290,6 +328,34 @@ namespace GreenshotPlugin.UnmanagedHelpers {
 	/// <param name="dwEventThread"></param>
 	/// <param name="dwmsEventTime"></param>
 	public delegate void WinEventDelegate(IntPtr hWinEventHook, WinEvent eventType, IntPtr hwnd, EventObjects idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+
+	/// <summary>
+	/// A SafeHandle class implementation for the current input desktop
+	/// </summary>
+	public class SafeCurrentInputDesktopHandle : SafeHandleZeroOrMinusOneIsInvalid {
+		private static readonly ILog LOG = LogManager.GetLogger(typeof(SafeCurrentInputDesktopHandle));
+
+		public SafeCurrentInputDesktopHandle() : base(true) {
+			IntPtr hDesktop = User32.OpenInputDesktop(0, true, DesktopAccessRight.GENERIC_ALL);
+			if (hDesktop != IntPtr.Zero) {
+				SetHandle(hDesktop);
+				if (User32.SetThreadDesktop(hDesktop)) {
+					LOG.DebugFormat("Switched to desktop {0}", hDesktop);
+				} else {
+					LOG.WarnFormat("Couldn't switch to desktop {0}", hDesktop);
+					LOG.Error(User32.CreateWin32Exception("SetThreadDesktop"));
+				}
+			} else {
+				LOG.Warn("Couldn't get current desktop.");
+				LOG.Error(User32.CreateWin32Exception("OpenInputDesktop"));
+			}
+		}
+
+		[SecurityPermission(SecurityAction.LinkDemand, UnmanagedCode = true)]
+		protected override bool ReleaseHandle() {
+			return User32.CloseDesktop(handle);
+		}
+	}
 
 	/// <summary>
 	/// A SafeHandle class implementation for the hIcon

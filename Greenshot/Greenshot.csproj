@@ -32,7 +32,6 @@
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="Configuration\EditorConfiguration.cs" />
     <Compile Include="Configuration\LanguageKeys.cs" />
-    <Compile Include="Configuration\RuntimeConfig.cs" />
     <Compile Include="Controls\BindableToolStripComboBox.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -45,6 +44,8 @@
     <Compile Include="Controls\ColorButton.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Controls\ContextMenuToolStripProfessionalRenderer.cs" />
+    <Compile Include="Controls\CustomToolStripProfessionalRenderer.cs" />
     <Compile Include="Controls\NonJumpingPanel.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -75,7 +76,6 @@
     <Compile Include="Destinations\PrinterDestination.cs" />
     <Compile Include="Drawing\ArrowContainer.cs" />
     <Compile Include="Drawing\StepLabelContainer.cs" />
-    <Compile Include="Drawing\Fields\Binding\AlignmentConverter.cs" />
     <Compile Include="Drawing\ImageContainer.cs" />
     <Compile Include="Drawing\CropContainer.cs" />
     <Compile Include="Drawing\CursorContainer.cs" />
@@ -397,32 +397,5 @@
   <PropertyGroup>
     <PreBuildEvent>
 copy "$(ProjectDir)log4net-debug.xml" "$(SolutionDir)bin\$(Configuration)\log4net.xml"</PreBuildEvent>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Platform)' == 'x86' ">
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
-    <BaseAddress>4194304</BaseAddress>
-    <PlatformTarget>x86</PlatformTarget>
-    <FileAlignment>4096</FileAlignment>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Platform)' == 'AnyCPU' ">
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
-    <BaseAddress>4194304</BaseAddress>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileAlignment>4096</FileAlignment>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <Optimize>False</Optimize>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-    <DebugType>Full</DebugType>
-    <DebugSymbols>true</DebugSymbols>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <Optimize>True</Optimize>
-    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
-    <DebugType>None</DebugType>
-    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 </Project>

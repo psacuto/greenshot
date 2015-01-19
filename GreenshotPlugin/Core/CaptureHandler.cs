@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Greenshot - a free and open source screenshot tool
  * Copyright (C) 2007-2014 Thomas Braun, Jens Klingen, Robin Krom
  * 
@@ -21,14 +21,24 @@
 
 using System.Drawing;
 
-namespace Greenshot.Configuration {
+namespace GreenshotPlugin.Core {
 	/// <summary>
-	/// Greenshot's runtime configuration
-	/// abstract, all properties are public and static
+	/// This is the method signature which is used to capture a rectangle from the screen.
 	/// </summary>
-	public abstract class RuntimeConfig {
-		public static string[] SupportedLanguages = {"en-US","de-DE","nl-NL"};
-		public static string BugTrackerUrl = "https://sourceforge.net/tracker/?func=postadd&group_id=191585&atid=937972&summary=%SUMMARY%&details=%DETAILS%";
-		public static Rectangle LastCapturedRegion = Rectangle.Empty;
+	/// <param name="captureBounds"></param>
+	/// <returns>Captured Bitmap</returns>
+	public delegate Bitmap CaptureScreenRectangleHandler(Rectangle captureBounds);
+
+	/// <summary>
+	/// This is a hack to experiment with different screen capture routines
+	/// </summary>
+	public static class CaptureHandler {
+		/// <summary>
+		/// By changing this value, null is default
+		/// </summary>
+		public static CaptureScreenRectangleHandler CaptureScreenRectangle {
+			get;
+			set;
+		}
 	}
 }

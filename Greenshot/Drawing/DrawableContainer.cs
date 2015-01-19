@@ -222,11 +222,11 @@ namespace Greenshot.Drawing {
 
 		[NonSerialized]
 		// will store current bounds of this DrawableContainer before starting a resize
-		private Rectangle _boundsBeforeResize = Rectangle.Empty;
+		protected Rectangle _boundsBeforeResize = Rectangle.Empty;
 		
 		[NonSerialized]
-		// "workbench" rectangle - used for calculatoing bounds during resizing (to be applied to this DrawableContainer afterwards)
-		private RectangleF _boundsAfterResize = RectangleF.Empty;
+		// "workbench" rectangle - used for calculating bounds during resizing (to be applied to this DrawableContainer afterwards)
+		protected RectangleF _boundsAfterResize = RectangleF.Empty;
 		
 		public Rectangle Bounds {
 			get { return GuiRectangle.GetGuiRectangle(Left, Top, Width, Height); }
@@ -290,7 +290,9 @@ namespace Greenshot.Drawing {
 		}
 
 		public virtual void Invalidate() {
-			_parent.Invalidate(DrawingBounds);
+			if (Status != EditStatus.UNDRAWN) {
+				_parent.Invalidate(DrawingBounds);
+			}
 		}
 		
 		public void AlignToParent(HorizontalAlignment horizontalAlignment, VerticalAlignment verticalAlignment) {
@@ -328,13 +330,32 @@ namespace Greenshot.Drawing {
 		}
 
 		/// <summary>
-		/// Should be overridden to handle gripper moves on the "TargetGripper"
+		/// Move the TargetGripper around, confined to the surface to solve BUG-1682
 		/// </summary>
 		/// <param name="newX"></param>
 		/// <param name="newY"></param>
 		protected virtual void TargetGripperMove(int newX, int newY) {
-			_targetGripper.Left = newX;
-			_targetGripper.Top = newY;
+			Point newGripperLocation = new Point(newX, newY);
+			Rectangle surfaceBounds = new Rectangle(0, 0, _parent.Width, _parent.Height);
+			// Check if gripper inside the parent (surface), if not we need to move it inside
+			// This was made for BUG-1682
+			if (!surfaceBounds.Contains(newGripperLocation)) {
+				if (newGripperLocation.X > surfaceBounds.Right) {
+					newGripperLocation.X = surfaceBounds.Right - 5;
+				}
+				if (newGripperLocation.X < surfaceBounds.Left) {
+					newGripperLocation.X = surfaceBounds.Left;
+				}
+				if (newGripperLocation.Y > surfaceBounds.Bottom) {
+					newGripperLocation.Y = surfaceBounds.Bottom - 5;
+				}
+				if (newGripperLocation.Y < surfaceBounds.Top) {
+					newGripperLocation.Y = surfaceBounds.Top;
+				}
+			}
+
+			_targetGripper.Left = newGripperLocation.X;
+			_targetGripper.Top = newGripperLocation.Y;
 		}
 
 		/// <summary>
@@ -449,6 +470,7 @@ namespace Greenshot.Drawing {
 		}
 		
 		private void GripperMouseMove(object sender, MouseEventArgs e) {
+			Invalidate();
 			Gripper originatingGripper = (Gripper)sender;
 			int absX = originatingGripper.Left + e.X;
 			int absY = originatingGripper.Top + e.Y;
@@ -463,7 +485,6 @@ namespace Greenshot.Drawing {
 					MakeBoundsChangeUndoable(false);
 				}
 				
-				Invalidate();
 				SuspendLayout();
 				
 				// reset "workbench" rectangle to current bounds
@@ -479,8 +500,8 @@ namespace Greenshot.Drawing {
 				ApplyBounds(_boundsAfterResize);
 	            
 				ResumeLayout();
-				Invalidate();
 			}
+			Invalidate();
 		}
 				
 		public bool hasFilters {

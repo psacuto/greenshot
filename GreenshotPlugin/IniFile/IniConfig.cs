@@ -209,7 +209,7 @@ namespace Greenshot.IniFile {
 			}
 			if (iniFilePath == null) {
 				// check if file is in the same location as started from, if this is the case
-				// we will use this file instead of the Applicationdate folder
+				// we will use this file instead of the ApplicationData folder
 				// Done for Feature Request #2741508
 				iniFilePath = Path.Combine(applicationStartupPath, configFilename);
 				if (!File.Exists(iniFilePath)) {
@@ -257,7 +257,7 @@ namespace Greenshot.IniFile {
 		/// </summary>
 		/// <param name="section">IniSection</param>
 		private static void FixProperties(IniSection section) {
-			// Make properties unchangable
+			// Make properties unchangeable
 			if (fixedProperties != null) {
 				Dictionary<string, string> fixedPropertiesForSection = null;
 				if (fixedProperties.TryGetValue(section.IniSectionAttribute.Name, out fixedPropertiesForSection)) {
